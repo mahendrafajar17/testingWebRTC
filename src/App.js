@@ -7,10 +7,9 @@ import 'firebase/firestore'
 function App() {
   const localVideo = useRef()
   const streamVideo = useRef()
+  var peer = useRef()
   const [roomID, setRoomID] = useState()
-  var sdp = useRef()
-
-  var peer = null
+  // var sdp = useRef()
 
   var firebaseConfig = {
     apiKey: "AIzaSyAGXPPSZkTQC0Qq5zoFmoDe3AdvbPBHYKE",
@@ -30,36 +29,20 @@ function App() {
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then(stream => {
-      peer = new Peer({
+      peer.current = new Peer({
         initiator: window.location.hash === '#init',
         // config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }] },
         trickle: false,
         stream: stream
       })
 
-      peer.on('signal', (data) => {
-        // console.log(JSON.stringify(data))
-
-        const document = {
-          type: data.type,
-          sdp: JSON.stringify(data)
-        }
-
-        if (window.location.hash === '#init') {
-          console.log(JSON.stringify(data))
-          firestore.collection('rooms').add(document).then(documentReference => {
-            setRoomID(documentReference.id)
-          })
-        } else {
-          console.log(data.type)
-          firestore.collection('rooms').doc(roomID).set(document).then(documentReference => {
-            setRoomID(documentReference.id)
-          })
-        }
-
+      peer.current.on('signal', (data) => {
+        data.type == 'offer'
+          ? sendOffer(data)
+          : sendAnswer(data)
       })
 
-      peer.on('stream', (data) => {
+      peer.current.on('stream', (data) => {
         streamVideo.current.srcObject = data
       })
 
@@ -69,10 +52,18 @@ function App() {
 
   const connect = () => {
     firestore.collection('rooms').doc(roomID).get().then(documentSnapshot => {
-      console.log(peer)
-      // sdp = JSON.parse(documentSnapshot.data().sdp)
-      // peer.signal(sdp)
+      peer.current.signal(JSON.parse(documentSnapshot.data().data))
     })
+  }
+
+  const sendOffer = (data) => {
+    firestore.collection('rooms').add({ data: JSON.stringify(data) }).then(documentReference => {
+      setRoomID(documentReference.id)
+    })
+  }
+
+  const sendAnswer = (data) => {
+    firestore.collection('rooms').doc(roomID).update({ data: JSON.stringify(data) })
   }
 
   return (
@@ -81,8 +72,8 @@ function App() {
       <br />
       <label>Room ID</label>
       <input type="text" onChange={e => setRoomID(e.target.value)} />
-      <label>SDP</label>
-      <textarea ref={ref => sdp = ref} />
+      {/* <label>SDP</label>
+      <textarea ref={ref => sdp = ref} /> */}
       <button onClick={connect}>Connect</button>
       <br />
       <video ref={localVideo} autoPlay></video>
