@@ -1,24 +1,93 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useRef, useEffect } from 'react'
+import Peer from 'simple-peer'
+import styled from "styled-components"
+import firebase from 'firebase/app'
+import 'firebase/firestore'
 
 function App() {
+  const localVideo = useRef()
+  const streamVideo = useRef()
+  const [roomID, setRoomID] = useState()
+  var sdp = useRef()
+
+  var peer = null
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyAGXPPSZkTQC0Qq5zoFmoDe3AdvbPBHYKE",
+    authDomain: "test-7a393.firebaseapp.com",
+    databaseURL: "https://test-7a393.firebaseio.com",
+    projectId: "test-7a393",
+    storageBucket: "test-7a393.appspot.com",
+    messagingSenderId: "41585094071",
+    appId: "1:41585094071:web:ea19b267f61bff39ac8c32"
+  };
+
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+
+  var firestore = firebase.firestore();
+
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then(stream => {
+      peer = new Peer({
+        initiator: window.location.hash === '#init',
+        // config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }] },
+        trickle: false,
+        stream: stream
+      })
+
+      peer.on('signal', (data) => {
+        // console.log(JSON.stringify(data))
+
+        const document = {
+          type: data.type,
+          sdp: JSON.stringify(data)
+        }
+
+        if (window.location.hash === '#init') {
+          console.log(JSON.stringify(data))
+          firestore.collection('rooms').add(document).then(documentReference => {
+            setRoomID(documentReference.id)
+          })
+        } else {
+          console.log(data.type)
+          firestore.collection('rooms').doc(roomID).set(document).then(documentReference => {
+            setRoomID(documentReference.id)
+          })
+        }
+
+      })
+
+      peer.on('stream', (data) => {
+        streamVideo.current.srcObject = data
+      })
+
+      localVideo.current.srcObject = stream
+    })
+  }, [])
+
+  const connect = () => {
+    firestore.collection('rooms').doc(roomID).get().then(documentSnapshot => {
+      console.log(peer)
+      // sdp = JSON.parse(documentSnapshot.data().sdp)
+      // peer.signal(sdp)
+    })
+  }
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+      {roomID}
+      <br />
+      <label>Room ID</label>
+      <input type="text" onChange={e => setRoomID(e.target.value)} />
+      <label>SDP</label>
+      <textarea ref={ref => sdp = ref} />
+      <button onClick={connect}>Connect</button>
+      <br />
+      <video ref={localVideo} autoPlay></video>
+      <video ref={streamVideo} autoPlay></video>
+    </div >
   );
 }
 
